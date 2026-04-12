@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FRM Part 1: Time Series AR(1) Simulator</title>
+    <style>
+        body { 
+            font-family: system-ui, -apple-system, sans-serif; 
+            background-color: #f8fafc; 
+            color: #0f172a; 
+            padding: 2rem; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            line-height: 1.6;
+        }
+        .card { 
+            background: white; 
+            padding: 2rem; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); 
+        }
+        h1 { color: #1e293b; margin-top: 0; }
+        h2 { color: #334155; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; }
+        .formula { 
+            background: #f1f5f9; 
+            padding: 1rem; 
+            text-align: center; 
+            border-radius: 8px; 
+            font-size: 1.25rem; 
+            margin: 1.5rem 0; 
+            font-family: monospace;
+            border: 1px solid #e2e8f0;
+        }
+        canvas { 
+            width: 100%; 
+            height: 300px; 
+            background: #ffffff; 
+            border: 1px solid #cbd5e1; 
+            border-radius: 8px; 
+            margin-top: 1rem; 
+        }
+        .slider-container { 
+            background: #f8fafc;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            margin: 1.5rem 0; 
+        }
+        input[type=range] { width: 100%; margin: 1rem 0; cursor: pointer; }
+        .status { font-weight: bold; font-size: 1.1rem; }
+        .stationary { color: #059669; }
+        .non-stationary { color: #dc2626; }
+        .concept-list { padding-left: 1.5rem; color: #475569; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>FRM Part 1 Quant: Time Series</h1>
+        
+        <h2>1. Covariance Stationarity</h2>
+        <p>For a time series to be useful for forecasting, it must be <strong>covariance stationary</strong>. This requires three strict conditions to hold over time:</p>
+        <ul class="concept-list">
+            <li><strong>Constant Mean:</strong> The expected value is constant.</li>
+            <li><strong>Constant Variance:</strong> The volatility doesn't change over time.</li>
+            <li><strong>Constant Autocovariance:</strong> The relationship between periods depends only on the lag distance, not the actual time.</li>
+        </ul>
+
+        <h2>2. Autoregressive AR(1) Model</h2>
+        <p>An AR(1) model links the current value to its immediately preceding value plus a random shock (white noise):</p>
+        <div class="formula">Y<sub>t</sub> = &alpha; + &phi;Y<sub>t-1</sub> + &epsilon;<sub>t</sub></div>
+        
+        <h2>Interactive Simulator</h2>
+        <p>Adjust the <strong>&phi; (phi)</strong> parameter below. Notice how the series behaves when it approaches a random walk (&phi; = 1).</p>
+
+        <div class="slider-container">
+            <label for="phi-slider" style="font-weight: bold;">Autoregressive Parameter (&phi;): <span id="phi-val">0.50</span></label>
+            <input type="range" id="phi-slider" min="-1.05" max="1.05" step="0.01" value="0.5">
+            <div id="status-text" class="status">Diagnosis: <span class="stationary">Stationary (Mean Reverting)</span></div>
+        </div>
+
+        <canvas id="chart" width="800" height="300"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('chart');
+        const ctx = canvas.getContext('2d');
+        const slider = document.getElementById('phi-slider');
+        const phiVal = document.getElementById('phi-val');
+        const statusText = document.getElementById('status-text');
+
+        // Box-Muller transform to generate standard normal variables (White Noise)
+        function gaussianRandom() {
+            let u = 0, v = 0;
+            while(u === 0) u = Math.random();
+            while(v === 0) v = Math.random();
+            return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+        }
+
+        function drawChart() {
+            const phi = parseFloat(slider.value);
+            phiVal.innerText = phi.toFixed(2);
+            
+            // Update Diagnosis Text
+            if (Math.abs(phi) < 1) {
+                statusText.innerHTML = 'Diagnosis: <span class="stationary">Stationary (Mean Reverting)</span>';
+            } else {
+                statusText.innerHTML = 'Diagnosis: <span class="non-stationary">Non-Stationary (Unit Root / Explosive)</span>';
+            }
+
+            // Generate AR(1) Data
+            let data = [0];
+            for (let i = 1; i < 200; i++) {
+                data.push(phi * data[i - 1] + gaussianRandom());
+            }
+
+            // Clear Canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw Center Zero Line
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height / 2);
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.setLineDash([5, 5]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Determine max value to scale the chart dynamically
+            const maxAbs = Math.max(...data.map(Math.abs), 5);
+            
+            // Draw Time Series Line
+            ctx.beginPath();
+            for (let i = 0; i < data.length; i++) {
+                const x = (i / (data.length - 1)) * canvas.width;
+                // Scale Y to fit canvas height
+                const y = (canvas.height / 2) - (data[i] / maxAbs) * (canvas.height / 2) * 0.9; 
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            
+            // Change color to red if non-stationary
+            ctx.strokeStyle = Math.abs(phi) >= 1 ? '#dc2626' : '#0f172a';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        // Listen for slider changes
+        slider.addEventListener('input', drawChart);
+        
+        // Initial draw on page load
+        drawChart(); 
+    </script>
+</body>
+</html>
